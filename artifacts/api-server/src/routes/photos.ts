@@ -8,6 +8,9 @@ import {
   AddPhotoBody,
   AddPhotoResponse,
   DeletePhotoParams,
+  UpdatePhotoVisibilityParams,
+  UpdatePhotoVisibilityBody,
+  UpdatePhotoVisibilityResponse,
   VerifyAdminPasscodeParams,
   VerifyAdminPasscodeBody,
   VerifyAdminPasscodeResponse,
@@ -16,6 +19,26 @@ import { broadcast } from "../lib/websocket";
 
 const router: IRouter = Router();
 
+async function resolveEvent(code: string) {
+  const [event] = await db.select().from(eventsTable).where(eq(eventsTable.code, code));
+  return event ?? null;
+}
+
+function isValidAdmin(event: { adminPasscode: string | null }, passcode: string | undefined): boolean {
+  if (!event.adminPasscode) return true;
+  return event.adminPasscode === passcode;
+}
+
+function photoRow(p: typeof photosTable.$inferSelect) {
+  return {
+    id: p.id,
+    eventId: p.eventId,
+    objectPath: p.objectPath,
+    visibility: p.visibility,
+    uploadedAt: p.uploadedAt.toISOString(),
+  };
+}
+
 router.get("/events/:code/photos", async (req, res): Promise<void> => {
   const params = ListPhotosParams.safeParse(req.params);
   if (!params.success) {
@@ -23,136 +46,117 @@ router.get("/events/:code/photos", async (req, res): Promise<void> => {
     return;
   }
 
-  const [event] = await db.select().from(eventsTable).where(eq(eventsTable.code, params.data.code));
-  if (!event) {
-    res.status(404).json({ error: "Event not found" });
-    return;
-  }
+  const event = await resolveEvent(params.data.code);
+  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
 
-  const photos = await db
+  const adminPasscode = req.headers["x-admin-passcode"] as string | undefined;
+  const admin = isValidAdmin(event, adminPasscode);
+
+  const allPhotos = await db
     .select()
     .from(photosTable)
     .where(eq(photosTable.eventId, event.id))
     .orderBy(photosTable.uploadedAt);
 
-  const response = ListPhotosResponse.parse(
-    photos.map((p) => ({
-      id: p.id,
-      eventId: p.eventId,
-      objectPath: p.objectPath,
-      uploadedAt: p.uploadedAt.toISOString(),
-    }))
-  );
+  const photos = admin ? allPhotos : allPhotos.filter(p => p.visibility === "public");
 
-  res.json(response);
+  res.json(ListPhotosResponse.parse(photos.map(photoRow)));
 });
 
 router.post("/events/:code/photos", async (req, res): Promise<void> => {
   const params = AddPhotoParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 
   const parsed = AddPhotoBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const [event] = await db.select().from(eventsTable).where(eq(eventsTable.code, params.data.code));
-  if (!event) {
-    res.status(404).json({ error: "Event not found" });
-    return;
-  }
+  const event = await resolveEvent(params.data.code);
+  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
 
   const [photo] = await db.insert(photosTable).values({
     eventId: event.id,
     objectPath: parsed.data.objectPath,
   }).returning();
 
-  const photoData = {
-    id: photo.id,
-    eventId: photo.eventId,
-    objectPath: photo.objectPath,
-    uploadedAt: photo.uploadedAt.toISOString(),
-  };
+  const data = photoRow(photo);
+  broadcast(params.data.code, { type: "new_photo", photo: data });
 
-  const response = AddPhotoResponse.parse(photoData);
+  res.status(201).json(AddPhotoResponse.parse(data));
+});
+
+router.patch("/events/:code/photos/:photoId", async (req, res): Promise<void> => {
+  const params = UpdatePhotoVisibilityParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const parsed = UpdatePhotoVisibilityBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const adminPasscode = req.headers["x-admin-passcode"] as string | undefined;
+
+  const event = await resolveEvent(params.data.code);
+  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+
+  if (!isValidAdmin(event, adminPasscode)) {
+    res.status(403).json({ error: "Invalid admin passcode" }); return;
+  }
+
+  const [updated] = await db
+    .update(photosTable)
+    .set({ visibility: parsed.data.visibility })
+    .where(and(eq(photosTable.id, params.data.photoId), eq(photosTable.eventId, event.id)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Photo not found" }); return; }
+
+  const data = photoRow(updated);
 
   broadcast(params.data.code, {
-    type: "new_photo",
-    photo: photoData,
+    type: "photo_visibility_changed",
+    photoId: params.data.photoId,
+    visibility: parsed.data.visibility,
+    photo: data,
   });
 
-  res.status(201).json(response);
+  res.json(UpdatePhotoVisibilityResponse.parse(data));
 });
 
 router.delete("/events/:code/photos/:photoId", async (req, res): Promise<void> => {
   const params = DeletePhotoParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 
   const adminPasscode = req.headers["x-admin-passcode"] as string | undefined;
 
-  const [event] = await db.select().from(eventsTable).where(eq(eventsTable.code, params.data.code));
-  if (!event) {
-    res.status(404).json({ error: "Event not found" });
-    return;
-  }
+  const event = await resolveEvent(params.data.code);
+  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
 
-  if (event.adminPasscode && event.adminPasscode !== adminPasscode) {
-    res.status(403).json({ error: "Invalid admin passcode" });
-    return;
+  if (!isValidAdmin(event, adminPasscode)) {
+    res.status(403).json({ error: "Invalid admin passcode" }); return;
   }
 
   const [deleted] = await db
     .delete(photosTable)
-    .where(
-      and(
-        eq(photosTable.id, params.data.photoId),
-        eq(photosTable.eventId, event.id)
-      )
-    )
+    .where(and(eq(photosTable.id, params.data.photoId), eq(photosTable.eventId, event.id)))
     .returning();
 
-  if (!deleted) {
-    res.status(404).json({ error: "Photo not found" });
-    return;
-  }
+  if (!deleted) { res.status(404).json({ error: "Photo not found" }); return; }
 
-  broadcast(params.data.code, {
-    type: "delete_photo",
-    photoId: params.data.photoId,
-  });
+  broadcast(params.data.code, { type: "delete_photo", photoId: params.data.photoId });
 
   res.sendStatus(204);
 });
 
 router.post("/events/:code/admin/verify", async (req, res): Promise<void> => {
   const params = VerifyAdminPasscodeParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 
   const parsed = VerifyAdminPasscodeBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const [event] = await db.select().from(eventsTable).where(eq(eventsTable.code, params.data.code));
-  if (!event) {
-    res.status(404).json({ error: "Event not found" });
-    return;
-  }
+  const event = await resolveEvent(params.data.code);
+  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
 
   const valid = event.adminPasscode === parsed.data.passcode;
-  const response = VerifyAdminPasscodeResponse.parse({ valid });
-  res.json(response);
+  res.json(VerifyAdminPasscodeResponse.parse({ valid }));
 });
 
 export default router;

@@ -33,17 +33,42 @@ export interface EventInput {
   adminPasscode?: string | null;
 }
 
+/**
+ * Whether the photo is visible to all guests or hidden (admin only)
+ */
+export type PhotoVisibility = typeof PhotoVisibility[keyof typeof PhotoVisibility];
+
+
+export const PhotoVisibility = {
+  public: 'public',
+  hidden: 'hidden',
+} as const;
+
 export interface Photo {
   id: number;
   eventId: number;
   /** Storage path to the photo */
   objectPath: string;
+  /** Whether the photo is visible to all guests or hidden (admin only) */
+  visibility: PhotoVisibility;
   uploadedAt: string;
 }
 
 export interface PhotoInput {
   /** Storage path returned from the upload URL endpoint */
   objectPath: string;
+}
+
+export type PhotoVisibilityUpdateVisibility = typeof PhotoVisibilityUpdateVisibility[keyof typeof PhotoVisibilityUpdateVisibility];
+
+
+export const PhotoVisibilityUpdateVisibility = {
+  public: 'public',
+  hidden: 'hidden',
+} as const;
+
+export interface PhotoVisibilityUpdate {
+  visibility: PhotoVisibilityUpdateVisibility;
 }
 
 export interface AdminVerifyInput {

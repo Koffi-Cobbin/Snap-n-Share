@@ -5,11 +5,14 @@
  * Event Photo App API
  * OpenAPI spec version: 0.1.0
  */
+import type { PhotoVisibility } from './photoVisibility';
 
 export interface Photo {
   id: number;
   eventId: number;
   /** Storage path to the photo */
   objectPath: string;
+  /** Whether the photo is visible to all guests or hidden (admin only) */
+  visibility: PhotoVisibility;
   uploadedAt: Date;
 }

@@ -56,16 +56,22 @@ export const GetEventResponse = zod.object({
 
 
 /**
- * @summary List all photos for an event
+ * Returns all photos for admins (x-admin-passcode header), public-only for guests.
+ * @summary List photos for an event
  */
 export const ListPhotosParams = zod.object({
   "code": zod.coerce.string()
+})
+
+export const ListPhotosHeader = zod.object({
+  "x-admin-passcode": zod.string().optional().describe('If provided and valid, hidden photos are included in the response.')
 })
 
 export const ListPhotosResponseItem = zod.object({
   "id": zod.number(),
   "eventId": zod.number(),
   "objectPath": zod.string().describe('Storage path to the photo'),
+  "visibility": zod.enum(['public', 'hidden']).describe('Whether the photo is visible to all guests or hidden (admin only)'),
   "uploadedAt": zod.coerce.date()
 })
 export const ListPhotosResponse = zod.array(ListPhotosResponseItem)
@@ -86,6 +92,7 @@ export const AddPhotoResponse = zod.object({
   "id": zod.number(),
   "eventId": zod.number(),
   "objectPath": zod.string().describe('Storage path to the photo'),
+  "visibility": zod.enum(['public', 'hidden']).describe('Whether the photo is visible to all guests or hidden (admin only)'),
   "uploadedAt": zod.coerce.date()
 })
 
@@ -98,7 +105,36 @@ export const DeletePhotoParams = zod.object({
   "photoId": zod.coerce.number()
 })
 
+export const DeletePhotoHeader = zod.object({
+  "x-admin-passcode": zod.string()
+})
+
 export const DeletePhotoResponse = zod.void()
+
+
+/**
+ * @summary Update photo visibility (admin only)
+ */
+export const UpdatePhotoVisibilityParams = zod.object({
+  "code": zod.coerce.string(),
+  "photoId": zod.coerce.number()
+})
+
+export const UpdatePhotoVisibilityHeader = zod.object({
+  "x-admin-passcode": zod.string()
+})
+
+export const UpdatePhotoVisibilityBody = zod.object({
+  "visibility": zod.enum(['public', 'hidden'])
+})
+
+export const UpdatePhotoVisibilityResponse = zod.object({
+  "id": zod.number(),
+  "eventId": zod.number(),
+  "objectPath": zod.string().describe('Storage path to the photo'),
+  "visibility": zod.enum(['public', 'hidden']).describe('Whether the photo is visible to all guests or hidden (admin only)'),
+  "uploadedAt": zod.coerce.date()
+})
 
 
 /**

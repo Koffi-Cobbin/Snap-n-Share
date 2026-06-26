@@ -86,13 +86,20 @@ paths:
     get:
       operationId: listPhotos
       tags: [photos]
-      summary: List all photos for an event
+      summary: List photos for an event
+      description: Returns all photos for admins (x-admin-passcode header), public-only for guests.
       parameters:
         - name: code
           in: path
           required: true
           schema:
             type: string
+        - name: x-admin-passcode
+          in: header
+          required: false
+          schema:
+            type: string
+          description: If provided and valid, hidden photos are included in the response.
       responses:
         "200":
           description: List of photos
@@ -160,9 +167,59 @@ paths:
           required: true
           schema:
             type: integer
+        - name: x-admin-passcode
+          in: header
+          required: true
+          schema:
+            type: string
       responses:
         "204":
           description: Photo deleted
+        "403":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Photo not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updatePhotoVisibility
+      tags: [photos]
+      summary: Update photo visibility (admin only)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: x-admin-passcode
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhotoVisibilityUpdate"
+      responses:
+        "200":
+          description: Photo updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Photo"
         "403":
           description: Unauthorized
           content:
@@ -346,7 +403,7 @@ components:
 
     Photo:
       type: object
-      required: [id, eventId, objectPath, uploadedAt]
+      required: [id, eventId, objectPath, visibility, uploadedAt]
       properties:
         id:
           type: integer
@@ -355,6 +412,10 @@ components:
         objectPath:
           type: string
           description: Storage path to the photo
+        visibility:
+          type: string
+          enum: [public, hidden]
+          description: Whether the photo is visible to all guests or hidden (admin only)
         uploadedAt:
           type: string
           format: date-time
@@ -366,6 +427,14 @@ components:
         objectPath:
           type: string
           description: Storage path returned from the upload URL endpoint
+
+    PhotoVisibilityUpdate:
+      type: object
+      required: [visibility]
+      properties:
+        visibility:
+          type: string
+          enum: [public, hidden]
 
     AdminVerifyInput:
       type: object

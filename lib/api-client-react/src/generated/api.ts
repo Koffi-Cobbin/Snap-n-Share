@@ -28,6 +28,7 @@ import type {
   HealthStatus,
   Photo,
   PhotoInput,
+  PhotoVisibilityUpdate,
   UploadUrlRequest,
   UploadUrlResponse
 } from './api.schemas';
@@ -293,7 +294,8 @@ export const getListPhotosUrl = (code: string,) => {
 }
 
 /**
- * @summary List all photos for an event
+ * Returns all photos for admins (x-admin-passcode header), public-only for guests.
+ * @summary List photos for an event
  */
 export const listPhotos = async (code: string, options?: RequestInit): Promise<Photo[]> => {
 
@@ -340,7 +342,7 @@ export type ListPhotosQueryError = ErrorType<ErrorEnvelope>
 
 
 /**
- * @summary List all photos for an event
+ * @summary List photos for an event
  */
 
 export function useListPhotos<TData = Awaited<ReturnType<typeof listPhotos>>, TError = ErrorType<ErrorEnvelope>>(
@@ -502,6 +504,79 @@ export const useDeletePhoto = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getDeletePhotoMutationOptions(options));
+    }
+
+export const getUpdatePhotoVisibilityUrl = (code: string,
+    photoId: number,) => {
+
+
+
+
+  return `/api/events/${code}/photos/${photoId}`
+}
+
+/**
+ * @summary Update photo visibility (admin only)
+ */
+export const updatePhotoVisibility = async (code: string,
+    photoId: number,
+    photoVisibilityUpdate: PhotoVisibilityUpdate, options?: RequestInit): Promise<Photo> => {
+
+  return customFetch<Photo>(getUpdatePhotoVisibilityUrl(code,photoId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(photoVisibilityUpdate)
+  }
+);}
+
+
+
+
+export const getUpdatePhotoVisibilityMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePhotoVisibility>>, TError,{code: string;photoId: number;data: BodyType<PhotoVisibilityUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePhotoVisibility>>, TError,{code: string;photoId: number;data: BodyType<PhotoVisibilityUpdate>}, TContext> => {
+
+const mutationKey = ['updatePhotoVisibility'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePhotoVisibility>>, {code: string;photoId: number;data: BodyType<PhotoVisibilityUpdate>}> = (props) => {
+          const {code,photoId,data} = props ?? {};
+
+          return  updatePhotoVisibility(code,photoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePhotoVisibilityMutationResult = NonNullable<Awaited<ReturnType<typeof updatePhotoVisibility>>>
+    export type UpdatePhotoVisibilityMutationBody = BodyType<PhotoVisibilityUpdate>
+    export type UpdatePhotoVisibilityMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update photo visibility (admin only)
+ */
+export const useUpdatePhotoVisibility = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePhotoVisibility>>, TError,{code: string;photoId: number;data: BodyType<PhotoVisibilityUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePhotoVisibility>>,
+        TError,
+        {code: string;photoId: number;data: BodyType<PhotoVisibilityUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdatePhotoVisibilityMutationOptions(options));
     }
 
 export const getVerifyAdminPasscodeUrl = (code: string,) => {

@@ -14,5 +14,8 @@ export * from './eventInput';
 export * from './healthStatus';
 export * from './photo';
 export * from './photoInput';
+export * from './photoVisibility';
+export * from './photoVisibilityUpdate';
+export * from './photoVisibilityUpdateVisibility';
 export * from './uploadUrlRequest';
 export * from './uploadUrlResponse';
