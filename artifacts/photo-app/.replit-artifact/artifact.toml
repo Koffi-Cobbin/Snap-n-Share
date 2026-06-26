@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Event Photo App"
+version = "1.0.0"
+id = "artifacts/photo-app"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23779
+
+[services.development]
+run = "pnpm --filter @workspace/photo-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/photo-app", "run", "build" ]
+publicDir = "artifacts/photo-app/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23779"
+BASE_PATH = "/"
