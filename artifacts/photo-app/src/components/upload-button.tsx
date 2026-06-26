@@ -1,9 +1,8 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, Upload as UploadIcon, Loader2 } from "lucide-react";
-import { useRequestUploadUrl, useAddPhoto, getListPhotosQueryKey } from "@workspace/api-client-react";
+import { useRequestUploadUrl, useAddPhoto } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
 
 interface UploadButtonProps {
   eventCode: string;
@@ -14,7 +13,6 @@ export function UploadButton({ eventCode }: UploadButtonProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const requestUrl = useRequestUploadUrl();
   const addPhoto = useAddPhoto();
@@ -46,15 +44,10 @@ export function UploadButton({ eventCode }: UploadButtonProps) {
 
       if (!uploadRes.ok) throw new Error("Failed to upload to storage");
 
-      // 3. Register photo
-      const newPhoto = await addPhoto.mutateAsync({
+      // 3. Register photo — WebSocket broadcast will update the gallery for everyone
+      await addPhoto.mutateAsync({
         code: eventCode,
         data: { objectPath }
-      });
-
-      // Optimistically add to local cache
-      queryClient.setQueryData(getListPhotosQueryKey(eventCode), (old: any[] = []) => {
-        return [newPhoto, ...old];
       });
 
       toast({ title: "Photo added!" });
