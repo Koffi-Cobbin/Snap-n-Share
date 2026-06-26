@@ -69,13 +69,22 @@ export default function EventPage() {
       const msg = lastJsonMessage as { type: string, photo: Photo };
       if (msg.type === "new_photo" && msg.photo) {
         queryClient.setQueryData(getListPhotosQueryKey(code), (old: Photo[] = []) => {
-          // check if already exists
           if (old.some(p => p.id === msg.photo.id)) return old;
           return [msg.photo, ...old];
         });
       }
     }
   }, [lastJsonMessage, code, queryClient]);
+
+  const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+
+  useEffect(() => {
+    if (showShareDialog && shareUrl) {
+      QRCode.toDataURL(shareUrl, { width: 200, margin: 2, color: { dark: "#ea580c", light: "#ffffff" } })
+        .then(url => setQrCodeDataUrl(url))
+        .catch(err => console.error(err));
+    }
+  }, [showShareDialog, shareUrl]);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +118,7 @@ export default function EventPage() {
   if (!match) return null;
 
   if (isLoadingEvent) {
+
     return (
       <div className="min-h-screen bg-background p-4 flex flex-col space-y-4">
         <Skeleton className="h-12 w-3/4 max-w-sm rounded-xl" />
@@ -132,15 +142,6 @@ export default function EventPage() {
     );
   }
 
-  const shareUrl = window.location.href;
-
-  useEffect(() => {
-    if (showShareDialog && shareUrl) {
-      QRCode.toDataURL(shareUrl, { width: 200, margin: 2, color: { dark: "#ea580c", light: "#ffffff" } })
-        .then(url => setQrCodeDataUrl(url))
-        .catch(err => console.error(err));
-    }
-  }, [showShareDialog, shareUrl]);
 
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col pb-24 relative">
