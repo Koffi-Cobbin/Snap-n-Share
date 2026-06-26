@@ -5,14 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Camera, ArrowRight, Lock } from "lucide-react";
-import { motion } from "framer-motion";
+import { Camera, ArrowRight, Lock, Download } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { usePwaInstall } from "@/hooks/use-pwa-install";
 
 export default function Home() {
   const [name, setName] = useState("");
   const [passcode, setPasscode] = useState("");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { canInstall, isInstalled, install } = usePwaInstall();
 
   const createEvent = useCreateEvent();
 
@@ -45,12 +47,11 @@ export default function Home() {
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 bg-background relative overflow-hidden">
       <div className="absolute inset-0 z-0 opacity-30 pointer-events-none">
-         {/* Decorative background circles */}
-         <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-primary/20 blur-[100px]" />
-         <div className="absolute -bottom-[20%] -right-[10%] w-[50%] h-[50%] rounded-full bg-secondary/40 blur-[100px]" />
+        <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-primary/20 blur-[100px]" />
+        <div className="absolute -bottom-[20%] -right-[10%] w-[50%] h-[50%] rounded-full bg-secondary/40 blur-[100px]" />
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md space-y-8 z-10"
@@ -96,8 +97,8 @@ export default function Home() {
             />
           </div>
 
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             className="w-full py-6 text-lg rounded-xl shadow-md group"
             disabled={!name.trim() || createEvent.isPending}
           >
@@ -105,12 +106,39 @@ export default function Home() {
               "Creating..."
             ) : (
               <>
-                Create Event 
+                Create Event
                 <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={20} />
               </>
             )}
           </Button>
         </form>
+
+        <AnimatePresence>
+          {canInstall && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+            >
+              <button
+                onClick={install}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl border border-border/60 bg-card/60 text-sm text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+              >
+                <Download size={15} />
+                Add to Home Screen
+              </button>
+            </motion.div>
+          )}
+          {isInstalled && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center text-sm text-muted-foreground"
+            >
+              App installed on your device
+            </motion.p>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );

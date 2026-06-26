@@ -57,19 +57,24 @@ export default defineConfig({
       manifest: {
         name: 'Event Photos',
         short_name: 'Photos',
+        description: 'Shared live photo gallery for events',
         display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
         theme_color: '#f97316',
         background_color: '#fff7ed',
         icons: [
           {
-            src: 'pwa-192x192.svg',
+            src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/svg+xml'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
-            src: 'pwa-512x512.svg',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/svg+xml'
+            type: 'image/png',
+            purpose: 'any maskable'
           }
         ]
       }
