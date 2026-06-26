@@ -12,6 +12,7 @@ A shareable live photo gallery for events — anyone with a link or QR code can 
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
 - Required env: `DEFAULT_OBJECT_STORAGE_BUCKET_ID`, `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR` — Object storage (auto-set by Replit)
+- `STORAGE_BACKEND` — `replit` (default) uses Replit/GCS object storage; `local` saves uploads to disk at `LOCAL_UPLOADS_DIR` (default `./uploads/` relative to api-server working dir)
 
 ## Stack
 
