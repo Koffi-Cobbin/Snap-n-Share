@@ -233,6 +233,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /events/{code}/photos/{photoId}/download:
+    get:
+      operationId: downloadPhoto
+      tags: [photos]
+      summary: Download a photo
+      description: Returns the photo binary with Content-Disposition: attachment.
+                   Guests can download public photos only.
+                   Admin (x-admin-passcode) can download hidden photos too.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: photoId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: x-admin-passcode
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Photo binary streamed
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event or photo not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /events/{code}/admin/verify:
     post:
       operationId: verifyAdminPasscode

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRoute } from "wouter";
 import {
   useGetEvent,
@@ -12,7 +12,7 @@ import {
 import type { Photo } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import useWebSocket from "react-use-websocket";
-import { Share, Shield, Camera, Image as ImageIcon, Trash2, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
+import { Share, Shield, Camera, Image as ImageIcon, Trash2, Eye, EyeOff, ShieldCheck, AlertCircle, Download, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import QRCode from "qrcode";
 
@@ -187,6 +187,47 @@ export default function EventPage() {
     });
   };
 
+  // ─── Selection & Download ──────────────────────────────────────────────────────
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const toggleSelection = useCallback((photoId: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(photoId)) {
+        next.delete(photoId);
+      } else {
+        next.add(photoId);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(photos.map((p) => p.id)));
+  }, [photos]);
+
+  const isAllSelected = useMemo(
+    () => photos.length > 0 && selectedIds.size === photos.length,
+    [photos.length, selectedIds.size],
+  );
+
+  const handleDownloadSelected = useCallback(() => {
+    const ids = [...selectedIds];
+    ids.forEach((photoId, index) => {
+      setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = `/api/events/${code}/photos/${photoId}/download`;
+        a.download = `photo-${photoId}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }, index * 300);
+    });
+  }, [selectedIds, code]);
+
   if (!match) return null;
 
   if (isLoadingEvent) {
@@ -274,6 +315,8 @@ export default function EventPage() {
                   key={photo.id}
                   photo={photo}
                   isAdmin={isAdmin}
+                  isSelected={selectedIds.has(photo.id)}
+                  onSelect={() => toggleSelection(photo.id)}
                   onDelete={() => handleDelete(photo.id)}
                   onToggleVisibility={() => handleToggleVisibility(photo)}
                 />
@@ -283,7 +326,42 @@ export default function EventPage() {
         )}
       </main>
 
-      <div className="fixed bottom-6 left-0 right-0 px-6 flex justify-center z-50 pointer-events-none">
+      {/* Selection action bar */}
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="fixed bottom-24 left-0 right-0 px-4 z-50 pointer-events-none"
+          >
+            <div className="mx-auto max-w-lg bg-background/95 backdrop-blur-xl border border-border rounded-2xl shadow-xl px-4 py-3 flex items-center justify-between gap-3 pointer-events-auto">
+              <span className="text-sm font-medium text-foreground whitespace-nowrap">
+                {selectedIds.size} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={clearSelection}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
+                >
+                  Deselect
+                </button>
+                <Button
+                  size="sm"
+                  onClick={handleDownloadSelected}
+                  className="rounded-full gap-1.5"
+                >
+                  <Download size={16} />
+                  Download ({selectedIds.size})
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="fixed bottom-6 left-0 right-0 px-6 flex justify-center z-40 pointer-events-none">
         <div className="pointer-events-auto">
           <UploadButton
             eventCode={code}
@@ -384,11 +462,13 @@ function PendingPhotoCard({ pending, onDismiss }: { pending: PendingPhoto; onDis
 interface PhotoCardProps {
   photo: Photo;
   isAdmin: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
   onDelete: () => void;
   onToggleVisibility: () => void;
 }
 
-function PhotoCard({ photo, isAdmin, onDelete, onToggleVisibility }: PhotoCardProps) {
+function PhotoCard({ photo, isAdmin, isSelected, onSelect, onDelete, onToggleVisibility }: PhotoCardProps) {
   const [showActions, setShowActions] = useState(false);
   const isHidden = photo.visibility === "hidden";
 
@@ -399,17 +479,34 @@ function PhotoCard({ photo, isAdmin, onDelete, onToggleVisibility }: PhotoCardPr
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.8 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
-      className="relative aspect-square rounded-xl overflow-hidden bg-muted group"
+      className={`relative aspect-square rounded-xl overflow-hidden bg-muted group ring-2 ring-inset transition-colors duration-150 ${
+        isSelected ? "ring-primary" : "ring-transparent"
+      }`}
     >
       <img
         src={`/api/storage/${photo.objectPath}`}
         alt="Event photo"
-        className={`w-full h-full object-cover transition-opacity duration-200 ${isHidden ? "opacity-40" : ""}`}
+        className={`w-full h-full object-cover transition-all duration-200 ${isHidden ? "opacity-40" : ""} ${
+          isSelected ? "brightness-75" : ""
+        }`}
         loading="lazy"
       />
 
+      {/* Selection checkbox */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onSelect(); }}
+        className={`absolute top-2 left-2 z-10 w-9 h-9 rounded-full flex items-center justify-center transition-all duration-150 ${
+          isSelected
+            ? "bg-primary text-primary-foreground shadow-md"
+            : "bg-black/40 text-white opacity-0 group-hover:opacity-100 hover:opacity-100"
+        }`}
+        aria-label={isSelected ? "Deselect photo" : "Select photo"}
+      >
+        {isSelected ? <Check size={18} /> : <div className="w-5 h-5 rounded-full border-2 border-white/80" />}
+      </button>
+
       {isHidden && (
-        <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-1">
+        <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-1 z-10">
           <EyeOff size={10} /> Hidden
         </div>
       )}

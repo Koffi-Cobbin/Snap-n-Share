@@ -203,3 +203,18 @@ export const GetStorageObjectParams = zod.object({
 export const GetStorageObjectResponse = zod.unknown()
 
 
+/**
+ * @summary Download a photo
+ */
+export const DownloadPhotoParams = zod.object({
+  "code": zod.coerce.string(),
+  "photoId": zod.coerce.number()
+})
+
+export const DownloadPhotoHeader = zod.object({
+  "x-admin-passcode": zod.string().optional().describe('If provided and valid, hidden photos can be downloaded.')
+})
+
+export const DownloadPhotoResponse = zod.unknown()
+
+

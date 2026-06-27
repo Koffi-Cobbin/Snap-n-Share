@@ -1,5 +1,6 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and } from "drizzle-orm";
+import { Readable } from "stream";
 import { db, eventsTable, photosTable } from "@workspace/db";
 import {
   ListPhotosParams,
@@ -14,8 +15,31 @@ import {
   VerifyAdminPasscodeParams,
   VerifyAdminPasscodeBody,
   VerifyAdminPasscodeResponse,
+  DownloadPhotoParams,
+  DownloadPhotoHeader,
 } from "@workspace/api-zod";
 import { broadcast } from "../lib/websocket";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import {
+  uuidFromObjectPath,
+  readLocalObject,
+} from "../lib/localDiskStorage";
+
+const replitStorage = new ObjectStorageService();
+
+const CONTENT_TYPE_EXT: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "image/avif": ".avif",
+  "image/heic": ".heic",
+  "image/heif": ".heif",
+};
+
+function extFromContentType(contentType: string): string {
+  return CONTENT_TYPE_EXT[contentType] ?? ".jpg";
+}
 
 const router: IRouter = Router();
 
@@ -157,6 +181,83 @@ router.post("/events/:code/admin/verify", async (req, res): Promise<void> => {
 
   const valid = event.adminPasscode === parsed.data.passcode;
   res.json(VerifyAdminPasscodeResponse.parse({ valid }));
+});
+
+// ─── Download ──────────────────────────────────────────────────────────────────
+
+function getBackend(): "replit" | "local" {
+  const val = process.env.STORAGE_BACKEND ?? "replit";
+  return val === "local" ? "local" : "replit";
+}
+
+router.get("/events/:code/photos/:photoId/download", async (req: Request, res: Response): Promise<void> => {
+  const params = DownloadPhotoParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const event = await resolveEvent(params.data.code);
+  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+
+  const [photo] = await db
+    .select()
+    .from(photosTable)
+    .where(and(eq(photosTable.id, params.data.photoId), eq(photosTable.eventId, event.id)));
+  if (!photo) { res.status(404).json({ error: "Photo not found" }); return; }
+
+  // Authorize: hidden photos require admin passcode
+  if (photo.visibility === "hidden") {
+    const adminPasscode = req.headers["x-admin-passcode"] as string | undefined;
+    if (!isValidAdmin(event, adminPasscode)) {
+      res.status(403).json({ error: "Unauthorized" });
+      return;
+    }
+  }
+
+  try {
+    const objectPath = photo.objectPath;
+
+    if (getBackend() === "local") {
+      const uuid = uuidFromObjectPath(objectPath);
+      if (!uuid) { res.status(404).json({ error: "Object not found" }); return; }
+
+      const result = await readLocalObject(uuid);
+      if (!result) { res.status(404).json({ error: "Object not found" }); return; }
+
+      const ext = extFromContentType(result.contentType);
+      res.setHeader("Content-Type", result.contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="photo-${photo.id}${ext}"`);
+      res.setHeader("Content-Length", result.body.length);
+      res.send(result.body);
+      return;
+    }
+
+    // Replit backend
+    const objectFile = await replitStorage.getObjectEntityFile(objectPath);
+    const response = await replitStorage.downloadObject(objectFile);
+
+    const contentType = response.headers.get("content-type") ?? "image/jpeg";
+    const ext = extFromContentType(contentType);
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="photo-${photo.id}${ext}"`);
+
+    const contentLength = response.headers.get("content-length");
+    if (contentLength) res.setHeader("Content-Length", contentLength);
+
+    res.status(response.status);
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      req.log.warn({ err: error }, "Download object not found");
+      res.status(404).json({ error: "Object not found" });
+      return;
+    }
+    req.log.error({ err: error }, "Download error");
+    res.status(500).json({ error: "Failed to download photo" });
+  }
 });
 
 export default router;
