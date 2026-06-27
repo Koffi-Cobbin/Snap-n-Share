@@ -11,6 +11,13 @@ export interface PendingPhoto {
   failed: boolean;
 }
 
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
+}
+
 interface UploadButtonProps {
   eventCode: string;
   activeUploads: number;
@@ -30,12 +37,32 @@ export function UploadButton({ eventCode, activeUploads, onPhotoQueued, onPhotoC
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Reset input immediately so the user can pick again if validation fails
+    e.target.value = "";
+
+    // Guard: must be an image
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Not an image",
+        description: "Please select a photo file (JPEG, PNG, HEIC, etc.).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Guard: file too large to safely compress on-device
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast({
+        title: "File too large",
+        description: `This photo is ${formatBytes(file.size)}. Please use a photo under ${formatBytes(MAX_FILE_SIZE_BYTES)}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Generate a stable local ID for tracking this upload
     const localId = crypto.randomUUID();
     const blobUrl = URL.createObjectURL(file);
-
-    // Reset input immediately — user can take another photo right away
-    e.target.value = "";
 
     // Notify parent to show preview immediately
     onPhotoQueued(localId, blobUrl);
