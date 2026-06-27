@@ -27,9 +27,22 @@ if (!basePath) {
   );
 }
 
+// Derive the public-facing origin so og:image can be absolute.
+// REPLIT_DOMAINS is a comma-separated list; first entry is the primary domain.
+const appOrigin = process.env.REPLIT_DOMAINS
+  ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+  : "";
+
 export default defineConfig({
   base: basePath,
   plugins: [
+    // Inject __APP_ORIGIN__ into index.html at build/serve time
+    {
+      name: "inject-app-origin",
+      transformIndexHtml(html: string) {
+        return html.replace(/__APP_ORIGIN__/g, appOrigin);
+      },
+    },
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

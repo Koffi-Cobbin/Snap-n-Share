@@ -58,6 +58,14 @@ export default function EventPage() {
     query: { enabled: !!code, queryKey: getGetEventQueryKey(code) },
   });
 
+  // Set page title to event name for browser tab and when shared via some platforms
+  useEffect(() => {
+    if (event?.name) {
+      document.title = `${event.name} — Shared Photo Wall`;
+    }
+    return () => { document.title = "Shared Photo Wall"; };
+  }, [event?.name]);
+
   const { data: photos = [], isLoading: isLoadingPhotos } = useListPhotos(code, {
     query: { enabled: !!code, queryKey: photosQueryKey },
     request: isAdmin && adminPasscode ? { headers: { "x-admin-passcode": adminPasscode } } : {},
