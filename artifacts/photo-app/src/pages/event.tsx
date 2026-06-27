@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UploadButton, type PendingPhoto } from "@/components/upload-button";
+import { saveMyEvent, getMyEvent, touchMyEvent } from "@/lib/my-events";
 
 function getWebSocketUrl(code: string) {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -50,6 +51,8 @@ export default function EventPage() {
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   // Track blob URLs so we can revoke them when done
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
+  // Ensure auto-auth only runs once (even in React strict mode)
+  const autoAuthAttempted = useRef(false);
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const photosQueryKey = [...getListPhotosQueryKey(code), isAdmin ? "admin" : "guest"];
@@ -153,6 +156,28 @@ export default function EventPage() {
     }
   }, [showShareDialog, shareUrl]);
 
+  // Auto-authenticate as admin from a previously saved passcode
+  useEffect(() => {
+    if (!code || autoAuthAttempted.current) return;
+    autoAuthAttempted.current = true;
+
+    const saved = getMyEvent(code);
+    if (!saved?.adminPasscode) return;
+
+    verifyPasscode.mutate(
+      { code, data: { passcode: saved.adminPasscode } },
+      {
+        onSuccess: (res) => {
+          if (res.valid) {
+            setIsAdmin(true);
+            setAdminPasscode(saved.adminPasscode);
+            touchMyEvent(code);
+          }
+        },
+      },
+    );
+  }, [code, verifyPasscode]);
+
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     verifyPasscode.mutate(
@@ -163,6 +188,12 @@ export default function EventPage() {
             setIsAdmin(true);
             setAdminPasscode(passcodeInput);
             setShowAdminDialog(false);
+            saveMyEvent({
+              code,
+              name: event?.name ?? "Event",
+              adminPasscode: passcodeInput,
+              createdAt: event?.createdAt ?? new Date().toISOString(),
+            });
             toast({ title: "Admin mode enabled", description: "You can now manage photos." });
           } else {
             toast({ title: "Invalid passcode", variant: "destructive" });

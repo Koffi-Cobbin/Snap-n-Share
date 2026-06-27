@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useCreateEvent } from "@workspace/api-client-react";
+import { useCreateEvent, getGetEventQueryKey, getEvent } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Camera, ArrowRight, Lock, Download } from "lucide-react";
+import { Camera, ArrowRight, Lock, Download, History, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePwaInstall } from "@/hooks/use-pwa-install";
+import { useQueries } from "@tanstack/react-query";
+import { saveMyEvent, getMyEvents, removeMyEvent, type PersistedEvent } from "@/lib/my-events";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Home() {
   const [name, setName] = useState("");
@@ -17,6 +20,29 @@ export default function Home() {
   const { canInstall, isInstalled, install } = usePwaInstall();
 
   const createEvent = useCreateEvent();
+
+  // ─── My Events (localStorage) ────────────────────────────────────────────
+
+  const [myEvents, setMyEvents] = useState<PersistedEvent[]>(() => getMyEvents());
+
+  useEffect(() => {
+    // Refresh from storage on mount (e.g. after returning from event page)
+    setMyEvents(getMyEvents());
+  }, []);
+
+  // Fetch live event data for each saved event (photo count, name changes)
+  const eventQueries = useQueries({
+    queries: myEvents.map((ev) => ({
+      queryKey: getGetEventQueryKey(ev.code),
+      queryFn: () => getEvent(ev.code),
+      staleTime: 30_000,
+    })),
+  });
+
+  const handleRemoveEvent = (code: string) => {
+    removeMyEvent(code);
+    setMyEvents((prev) => prev.filter((e) => e.code !== code));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +57,15 @@ export default function Home() {
       },
       {
         onSuccess: (data) => {
+          // Persist the event so the admin can find it after closing the app
+          if (passcode.trim()) {
+            saveMyEvent({
+              code: data.code,
+              name: data.name,
+              adminPasscode: passcode.trim(),
+              createdAt: data.createdAt,
+            });
+          }
           setLocation(`/event/${data.code}`);
         },
         onError: () => {
@@ -113,6 +148,68 @@ export default function Home() {
           </Button>
         </form>
 
+        {/* ─── My Events ──────────────────────────────────────────────── */}
+        {myEvents.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <History size={16} />
+              <span>My Events</span>
+            </div>
+            <div className="space-y-2">
+              {myEvents.map((ev, i) => {
+                const live = eventQueries[i];
+                const photoCount = live?.data?.photoCount ?? 0;
+                const eventName = live?.data?.name ?? ev.name;
+                const dateLabel = formatRelativeDate(ev.createdAt);
+
+                return (
+                  <div
+                    key={ev.code}
+                    className="flex items-center justify-between gap-3 bg-card/60 border border-border/50 rounded-2xl px-4 py-3 group hover:bg-card transition-colors"
+                  >
+                    <button
+                      onClick={() => setLocation(`/event/${ev.code}`)}
+                      className="flex-1 text-left min-w-0"
+                    >
+                      <p className="font-semibold text-foreground truncate text-sm">
+                        {eventName}
+                      </p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                        {live?.isLoading ? (
+                          <Skeleton className="inline-block h-3 w-20 rounded" />
+                        ) : (
+                          <>
+                            <span>{photoCount} photo{photoCount !== 1 ? "s" : ""}</span>
+                            <span>·</span>
+                            <span>{dateLabel}</span>
+                          </>
+                        )}
+                      </p>
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full text-xs h-8 px-3"
+                        onClick={() => setLocation(`/event/${ev.code}`)}
+                      >
+                        Open
+                      </Button>
+                      <button
+                        onClick={() => handleRemoveEvent(ev.code)}
+                        className="p-1.5 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                        aria-label={`Remove ${ev.name} from saved events`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         <AnimatePresence>
           {canInstall && (
             <motion.div
@@ -142,4 +239,23 @@ export default function Home() {
       </motion.div>
     </div>
   );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatRelativeDate(isoDate: string): string {
+  const now = Date.now();
+  const then = new Date(isoDate).getTime();
+  const diffMs = now - then;
+  const diffDays = Math.floor(diffMs / 86_400_000);
+
+  if (diffDays < 0) return "just now";
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  return new Date(isoDate).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
